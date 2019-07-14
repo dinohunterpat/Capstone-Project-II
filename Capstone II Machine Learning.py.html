@@ -1,0 +1,337 @@
+
+# coding: utf-8
+
+# # Machine Learning
+
+# ## Approach
+
+# The machine learning for this Capstone project is comprised of regression analysis and Naive Bayes classification. The regression analysis of both multivariate and forest types will determine demographic factors affecting the questionnaire score. Naive Bayes classification will determine the probability of ASD diagnosis depending on demographics. 
+
+# In[1]:
+
+
+# Import Data
+get_ipython().run_line_magic('store', '-r autism_data')
+autism_data.head()
+
+
+# ## Regression Analysis of Score
+
+# ### Multi-Variate
+
+# The machine learning process of the data is comprised of linear regression and R2 analysis. Linear regression offers many advantages like the flexibility in working with smaller datasets, the ability to provide a fitted regression line showing relationship between independent and dependent variables, and the expediency of providing results. This linear regression is used to test whether the independent variables, which are the gender and ethnicity, show correlation with the ASD score. The linear regression module could then be used to generate a linear equation with the box office parameters as variables.
+# 
+# After performing linear regression, R2 analysis was used in determining how closely the predicted data points adhere to the fitted regression. The independent and dependent variables are each split into training and testing portions with the training portions becoming fitted to a regressor. The regressor in turn is used for predicting the output dependent variable based test portion of the independent variable. These values are then used for computing R2 score and Residual Mean Square Error (RMSE); an R2 value closer to 1 would indicate close adherence to the fitted regression while a low RMSE score indicates that there is little deviation. R2 means error (RSME) of relatively low value would suggest that the predicted data reliably adheres to the fitted regression pattern.
+
+# In[510]:
+
+
+# Import necessary modules
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+from collections import Counter
+import seaborn as sns
+import scipy as sp
+from sklearn.metrics import mean_squared_error,confusion_matrix, classification_report
+from sklearn.model_selection import train_test_split,cross_val_score
+from sklearn.linear_model import LinearRegression,LogisticRegression
+
+
+# In[511]:
+
+
+# Modify Dataframe for Linear Regression
+#autism_data.Ethnicity = pd.Categorical(autism_data.Ethnicity)
+#autism_data['code'] = autism_data.Ethnicity.cat.codes
+
+autism_data['Ethnicity code'] = pd.factorize(autism_data['Ethnicity'])[0] + 1
+autism_data['Gender code'] = pd.factorize(autism_data['Gender'])[0] + 1
+autism_data.head(5)
+
+
+# In[293]:
+
+
+autism_data.groupby(by=['Gender','ASD'])['ASD'].count()
+
+
+# In[324]:
+
+
+autism_data.groupby(by=['ASD'])['ASD'].count()
+
+
+# In[302]:
+
+
+# Final Linear Regression
+# Total 
+X_ethnicity_gender = autism_data[['Ethnicity code','Gender code']]
+y_score = autism_data['Result']
+reg = LinearRegression()
+
+# Training and Testing
+X_train, X_test, y_train, y_test = train_test_split(X_ethnicity_gender, y_score, test_size = 0.3, random_state=42)
+reg.fit(X_train,y_train)
+print("Intercept: {}".format(reg.intercept_))
+print("Coefficients: {}".format(reg.coef_))
+y_pred = reg.predict(X_test)
+rmse = np.sqrt(mean_squared_error(y_test,y_pred))
+
+print("R^2 Value: {}".format(reg.score(X_test, y_test)))
+print("Root Mean Squared Error: {}".format(rmse))
+
+
+# At face value, the data for linear regression shows that gender has a positive coefficient, suggesting that it has greater impact on scoring. However, given the relatively low R^2 value, this suggests that the multi-variate linear regression model is not the most accurate method of predicting score. Furthermore, since the values are categorical, this further complicates that ability to form a linear regression equation.
+
+# ### Forest
+
+# Random forest regression was utilized as an alternative for finding the impact of demographics on scoring. Random forest itself is an aggregation of multiple decision trees, each of which shows branching paths to possible outcomes based on certain criteria (nodes). Based on these different outcomes, the random forest regression can be used to the probability of these outcomes occuring. In this case, this type of machine learning is used for determining the likelihood of the different demographic factors that affect scoring.
+
+# In[42]:
+
+
+# Import Modules
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+import matplotlib.pyplot as plt
+from sklearn.tree import export_graphviz
+
+
+# In[49]:
+
+
+autism_data['Ethnicity']
+
+
+# In[304]:
+
+
+# Convert to Dummy Variables
+whole_set = pd.get_dummies(autism_data)
+features = whole_set[['Ethnicity_Asian', 'Ethnicity_Black', 'Ethnicity_Hispanic/Latino',
+       'Ethnicity_Middle Eastern ', 'Ethnicity_Not Available',
+       'Ethnicity_Oceania', 'Ethnicity_Other', 'Ethnicity_South Asian',
+       'Ethnicity_Turkish', 'Ethnicity_White-European','Gender_F','Gender_M','Result']]
+features.head()
+
+
+# In[173]:
+
+
+# Labels are the values we want to predict
+labels = np.array(features['Result'])
+# Remove the labels from the features
+features = features.drop('Result', axis = 1)
+# Saving feature names for later use
+feature_list = list(features.columns[pd.Series(features.columns).str.startswith('Ethnicity')])+list(features.columns[pd.Series(features.columns).str.startswith('Gender')])
+# Convert to numpy array
+features = np.array(features)
+
+
+# In[174]:
+
+
+# Train data
+train_features, test_features, train_labels, test_labels = train_test_split(features, labels, test_size = 0.25, random_state = 42)
+
+
+# In[175]:
+
+
+# Baseline errors, and display average baseline error
+baseline_errors = abs(np.mean(autism_data['Result']) - test_labels)
+print('Average baseline error: ', round(np.mean(baseline_errors), 2))
+
+
+# In[176]:
+
+
+# Instantiate model with 1000 decision trees and train model on training data
+rf = RandomForestRegressor(n_estimators = 1000, random_state = 42)
+rf = rf.fit(train_features, train_labels)
+
+
+# In[177]:
+
+
+# Make Predictions
+# Use the forest's predict method on the test data and calculate mean absolute reoor
+predictions = rf.predict(test_features)
+errors = abs(predictions - test_labels)
+print('Mean Absolute Error:', round(np.mean(errors), 2), 'degrees.')
+
+
+# In[179]:
+
+
+importances = list(rf.feature_importances_)
+# List of tuples with variable and importance
+feature_importances = [(feature, round(importance, 2)) for feature, importance in zip(feature_list, importances)]
+# Sort the feature importances by most important first
+feature_importances = sorted(feature_importances, key = lambda x: x[1], reverse = True)
+# Print out the feature and importances 
+[print('Variable: {:20} Importance: {}'.format(*pair)) for pair in feature_importances];
+
+
+# In[181]:
+
+
+# Import matplotlib for plotting and use magic command for Jupyter Notebooks
+import matplotlib.pyplot as plt
+get_ipython().run_line_magic('matplotlib', 'inline')
+plt.style.use('fivethirtyeight')
+x_values = list(range(len(importances)))
+plt.bar(x_values, importances, orientation = 'vertical')
+plt.xticks(x_values, feature_list, rotation='vertical')
+plt.ylabel('Importance'); plt.xlabel('Demographic Variables'); plt.title('Variable Importances');
+
+
+# The random forest test shows that gender and most ethnicities don't have a major impact on the questionnaire scores. However, White Europeans have the highest impact on scoring at 51%. As such, this suggest White Europeans are more likely to show symptoms of ASD.
+
+# ## Classification for Predicting Probability of ASD
+
+# ### Naive Bayes
+
+# Naive Bayes (NB) is a classifier that determines the likelihood of an event occurring. For this project, the NB will determine the probability that an autstic individual belongs to a specific demographic. Multinomial NB is used for ethnicity (allows multiple variables) while Bernoulli NB is used for gender (works best for binary variables).  
+
+# In[183]:
+
+
+from sklearn.model_selection import train_test_split
+import numpy as np
+import scipy as sp
+import matplotlib as mpl
+import matplotlib.cm as cm
+import matplotlib.pyplot as plt
+import pandas as pd
+import seaborn as sns
+from six.moves import range
+from matplotlib.colors import ListedColormap
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.model_selection import train_test_split
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.naive_bayes import BernoulliNB
+
+
+# In[531]:
+
+
+# Test classifier
+x = autism_data["Ethnicity code"]
+x = x.values.reshape(-1,1)
+y = (autism_data.ASD == 'YES').values.astype(np.int)
+x_training, x_testing, y_training, y_testing = train_test_split(x,y)
+clf = MultinomialNB().fit(x_training, y_training)
+print("The training accuracy score is {:0.2f}".format(clf.score(x_training,y_training)))
+print("The testing accuracy score is {:0.2f}".format(clf.score(x_testing,y_testing)))
+
+
+# In[534]:
+
+
+autism_data.groupby(by=['Ethnicity code','Ethnicity'])['Ethnicity'].count()
+
+
+# In[533]:
+
+
+# Create Pandas column of ethnicities
+ethnic_names = autism_data['Ethnicity'].unique()
+type(ethnic_names)
+df1 = pd.DataFrame(ethnic_names)
+
+
+# In[535]:
+
+
+# Create Pandas column of ethnicities comprising the ASD population
+sc = []
+for i in range(1,11):
+    sc.append(100*np.mean(x_testing==i))
+percentage_of_ASD_pop = sc
+df2 = pd.DataFrame(percentage_of_ASD_pop)
+
+
+# In[563]:
+
+
+type(df2)
+
+
+# In[567]:
+
+
+# Create Pandas column of proportions of ethnicies with ASD
+Ethnic_pop = []
+for i in autism_data.groupby(by=['Ethnicity code','Ethnicity'])['Ethnicity'].count():
+    Ethnic_pop.append(i)
+ethnicity_numpy = np.array(Ethnic_pop,dtype=np.float)
+percentage_numpy = np.array(P_list,dtype=np.float)
+mrr = []
+ddd = (189*percentage_numpy)/ethnicity_numpy
+for i in ddd:
+    mrr.append(i)
+percentage_of_ethnic_with_ASD = mrr
+df3 = pd.DataFrame(percentage_of_ethnic_with_ASD)
+
+
+# In[575]:
+
+
+# Create main data frame
+result = pd.concat([df1,df2,df3],axis=1)
+new_title = ['Ethnicity', 'Proportion of Autistics Comprised of Ethnic Group', 'Proportion of Ethnic Group with Autism']
+result.columns = new_title
+result
+
+
+# In[576]:
+
+
+result['Proportion of Ethnic Group with Autism']
+
+
+# The percentage of autistics who are White-European is 32.39%. The percentage of White-European who are autistics is 25.34%.
+# 
+# The percentage of autistics who are Hispanic/Latino is 5.68%. The percentage of Hispanic/Latino who are autistics is 22.77%.
+# 
+# The percentage of autistics who are Not Available is 12.50%. The percentage of Not Available who are autistics is 29.08%.
+# 
+# The percentage of autistics who are Other is 5.11%. The percentage of Other who are autistics is 32.21%.
+# 
+# The percentage of autistics who are Black is 5.68%. The percentage of Black who are autistics is 29.96%.
+# 
+# The percentage of autistics who are Asian is 17.61%. The percentage of Asian who are autistics is 27.94%.
+# 
+# The percentage of autistics who are Middle Eastern is 13.64%. The percentage of Middle Eastern who are autistics is 23.34%.
+# 
+# The percentage of autistics who are Oceania is 1.14%. The percentage of Oceania who are autistics is 35.80%.
+# 
+# The percentage of autistics who are South Asian is 5.68%. The percentage of South Asian who are autistics is 23.86%.
+# 
+# The percentage of autistics who are Turkish is 0.57%. The percentage of Turkish who are autistics is 53.69%.
+
+# In[579]:
+
+
+# Gender, BernoulliNB
+x = autism_data["Gender code"]
+x = x.values.reshape(-1,1)
+y = (autism_data.ASD == 'YES').values.astype(np.int)
+x_training, x_testing, y_training, y_testing = train_test_split(x,y)
+clf = BernoulliNB().fit(x_training, y_training)
+ASD_who_are_female = np.mean(x_testing==1)*100
+ASD_who_are_male = np.mean(x_testing==2)*100
+proportion_of_women_with_ASD = ASD_who_are_female*189/337 
+proportion_of_men_with_ASD = ASD_who_are_male*189/367
+print("The training accuracy score is {:0.2f}".format(clf.score(x_training,y_training)))
+print("The testing accuracy score is {:0.2f}".format(clf.score(x_testing,y_testing)))
+print("The percentage of autistics who are female is {:0.2f}".format(ASD_who_are_female))
+print("The percentage of autistics who are male is {:0.2f}".format(ASD_who_are_male))
+print("The percentage of women who are autistic is {:0.2f}".format(proportion_of_women_with_ASD))
+print("The percentage of men who are autistic is {:0.2f}".format(proportion_of_men_with_ASD))
+
